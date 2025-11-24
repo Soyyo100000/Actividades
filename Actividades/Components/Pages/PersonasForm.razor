@@ -1,0 +1,213 @@
+﻿@page "/personas/nueva"
+@page "/personas/editar/{Id:int}"
+@rendermode InteractiveServer
+@inject NavigationManager _navigator;
+@inject IRepositorioPersonas _repositorio;
+@inject IRepositorioClasificacion _repositorioclas;
+@inject IRepositorioMateriales _repositoriomaterial;
+
+<h2>@_mensaje Persona</h2>
+
+<EditForm Model="_persona" FormName="frmPersona" OnValidSubmit="Guardar">
+    <DataAnnotationsValidator />
+
+    <div class="row mb-3">
+        <label for="txtNombre" class="col-2 col-form-label">Nombre</label>
+        <div class="col-10">
+            <InputText id="txtNombre" class="form-control" @bind-Value="_persona.Nombre" />
+            <ValidationMessage For="() => _persona.Nombre" />
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <label for="txtCorreo" class="col-2 col-form-label">Correo</label>
+        <div class="col-10">
+            <InputText id="txtCorreo" class="form-control" @bind-Value="_persona.Correo" />
+            <ValidationMessage For="() => _persona.Correo" />
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <label for="txtTelefono" class="col-2 col-form-label">Teléfono</label>
+        <div class="col-10">
+            <InputText id="txtTelefono" class="form-control" @bind-Value="_persona.Telefono" />
+            <ValidationMessage For="() => _persona.Telefono" />
+        </div>
+    </div>
+
+    <!-- Clasificación -->
+    <div class="row mb-3">
+        <label for="txtClasificacion" class="col-2 col-form-label">Clasificación</label>
+        <div class="col-10">
+            <InputSelect class="form-select" @bind-Value="_persona.ClasificacionId">
+                <option value="0" disabled="disabled">Seleccione clasificación...</option>
+                @foreach (Clasificacion clasificacion in _clasificaciones)
+                {
+                    <option value="@clasificacion.Id">@clasificacion.Nombre</option>
+                }
+            </InputSelect>
+            <ValidationMessage For="() => _persona.ClasificacionId" />
+        </div>
+        </div>
+
+    <!-- Materiales como checkboxes (permite selección múltiple real) -->
+    <div class="row mb-3">
+        <label class="col-2 col-form-label">Materiales</label>
+        <div class="col-10">
+            @if (_materiales == null || !_materiales.Any())
+            {
+                <div>No hay materiales.</div>
+            }
+            else
+            {
+                @foreach (var m in _materiales)
+                {
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="mat@m.Id"
+                               checked="@IsMaterialSelected(m.Id)"
+                               @onchange="@( (ChangeEventArgs e) => ToggleMaterialAsync(e, m.Id) )" />
+                        <label class="form-check-label" for="mat@m.Id">@m.Nombre</label>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Guardar Persona</button>
+    <button class="btn btn-danger ms-3" @onclick="Cancelar" @onclick:preventDefault>Cancelar</button>
+</EditForm>
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private string _mensaje = "";
+    private Persona _persona = new();
+    private List<Clasificacion> _clasificaciones = new();
+    private List<Materiale> _materiales = new();
+
+    // Selección real de materiales (many-to-many)
+    private HashSet<int> _selectedMaterialIds = new();
+
+    // state del gestor de materiales (si lo mantienes)
+    private int _materialSeleccionadoId = 0;
+    private Materiale _editingMat = new();
+    private bool _isAddingMat = false;
+    private bool _isEditingMat = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadClasificaciones();
+        await LoadMateriales();
+
+        if (Id > 0)
+        {
+            _persona = (await _repositorio.Get(Id)) ?? new Persona();
+            _mensaje = "Modificar";
+            if (_persona.Materiales != null)
+                _selectedMaterialIds = _persona.Materiales.Select(m => m.Id).ToHashSet();
+        }
+        else
+        {
+            _mensaje = "Nueva";
+            _persona = new Persona();
+        }
+    }
+
+    private async Task LoadClasificaciones() => _clasificaciones = await _repositorioclas.GetAll();
+    private async Task LoadMateriales() => _materiales = await _repositoriomaterial.GetAll();
+
+    private bool IsMaterialSelected(int id) => _selectedMaterialIds.Contains(id);
+
+    private void ToggleMaterial(ChangeEventArgs e, int materialId)
+    {
+        var isChecked = e?.Value is bool b && b;
+        if (!isChecked && e?.Value is string s && s == "on") isChecked = true;
+
+        if (isChecked) _selectedMaterialIds.Add(materialId);
+        else _selectedMaterialIds.Remove(materialId);
+    }
+
+    // Método asincrono que maneja el cambio (devuelve Task)
+    private Task ToggleMaterialAsync(ChangeEventArgs e, int materialId)
+    {
+        var isChecked = e?.Value is bool b && b;
+        if (!isChecked && e?.Value is string s && s == "on") isChecked = true;
+
+        if (isChecked) _selectedMaterialIds.Add(materialId);
+        else _selectedMaterialIds.Remove(materialId);
+
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task Guardar()
+    {
+        // Asociar materiales seleccionados a la persona antes de guardar
+        _persona.Materiales = _materiales.Where(m => _selectedMaterialIds.Contains(m.Id)).ToList();
+
+        if (Id > 0)
+            await _repositorio.Update(Id, _persona);
+        else
+            await _repositorio.Add(_persona);
+
+        Cancelar();
+    }
+
+    private void Cancelar()
+    {
+        _navigator.NavigateTo("/personas");
+    }
+
+    // Opcionales: métodos para gestionar materiales desde aquí (Nuevo/Editar/Borrar)
+    private void StartNewMaterial()
+    {
+        _editingMat = new Materiale();
+        _isAddingMat = true;
+        _isEditingMat = false;
+    }
+
+    private void EditSelectedMaterial()
+    {
+        var mat = _materiales.FirstOrDefault(m => m.Id == _materialSeleccionadoId);
+        if (mat != null)
+        {
+            _editingMat = new Materiale { Id = mat.Id, Nombre = mat.Nombre };
+            _isEditingMat = true;
+            _isAddingMat = false;
+        }
+    }
+
+    private async Task SaveMaterial()
+    {
+        if (_isEditingMat)
+            await _repositoriomaterial.Update(_editingMat.Id, _editingMat);
+        else
+            await _repositoriomaterial.Add(_editingMat);
+
+        _isAddingMat = _isEditingMat = false;
+        _editingMat = new Materiale();
+        await LoadMateriales();
+        StateHasChanged();
+    }
+
+    private void CancelMaterial()
+    {
+        _isAddingMat = _isEditingMat = false;
+        _editingMat = new Materiale();
+    }
+
+    private async Task DeleteSelectedMaterial()
+    {
+        if (_materialSeleccionadoId == 0) return;
+
+        await _repositoriomaterial.Delete(_materialSeleccionadoId);
+
+        if (_selectedMaterialIds.Contains(_materialSeleccionadoId))
+            _selectedMaterialIds.Remove(_materialSeleccionadoId);
+
+        _materialSeleccionadoId = 0;
+        await LoadMateriales();
+        StateHasChanged();
+    }
+}

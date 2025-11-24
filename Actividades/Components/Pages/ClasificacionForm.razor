@@ -1,0 +1,117 @@
+﻿@page "/clasificaciones"
+@page "/clasificaciones/editar/{Id:int}"
+@rendermode InteractiveServer
+@inject IRepositorioClasificacion _repositorioClas
+@inject NavigationManager _nav
+
+<h3>Clasificaciones</h3>
+
+<div class="mb-3">
+    <button class="btn btn-sm btn-outline-success" @onclick="StartAdd">Añadir Clasificación</button>
+    <button class="btn btn-sm btn-secondary ms-2" @onclick='() => _nav.NavigateTo("/personas")'>Volver a Personas</button>
+</div>
+
+<div class="row">
+    <div class="col-6">
+        <ul class="list-group">
+            @foreach (var c in _clasificaciones)
+            {
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    @c.Nombre
+                    <div>
+                        <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => Edit(c)">Editar</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => Delete(c.Id)">Eliminar</button>
+                    </div>
+                </li>
+            }
+        </ul>
+    </div>
+
+    <div class="col-6">
+        @if (_isAdding || _isEditing)
+        {
+            <div class="card">
+                <div class="card-body">
+                    <h6>@(_isEditing ? "Editar Clasificación" : "Nueva Clasificación")</h6>
+                    <EditForm Model="_editing" OnValidSubmit="Save">
+                        <DataAnnotationsValidator />
+                        <InputText class="form-control mb-2" @bind-Value="_editing.Nombre" />
+                        <ValidationMessage For="() => _editing.Nombre" />
+                        <div>
+                            <button type="submit" class="btn btn-sm btn-success">Guardar</button>
+                            <button type="button" class="btn btn-sm btn-secondary ms-2" @onclick="Cancel">Cancelar</button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; } = 0;
+
+    private List<Clasificacion> _clasificaciones = new();
+    private Clasificacion _editing = new();
+    private bool _isAdding = false;
+    private bool _isEditing = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+
+        if (Id > 0)
+        {
+            var c = await _repositorioClas.Get(Id);
+            if (c != null)
+            {
+                _editing = new Clasificacion { Id = c.Id, Nombre = c.Nombre };
+                _isEditing = true;
+                _isAdding = false;
+            }
+        }
+    }
+
+    private async Task Load() => _clasificaciones = await _repositorioClas.GetAll();
+
+    private void StartAdd()
+    {
+        _editing = new Clasificacion();
+        _isAdding = true;
+        _isEditing = false;
+    }
+
+    private void Edit(Clasificacion c)
+    {
+        _editing = new Clasificacion { Id = c.Id, Nombre = c.Nombre };
+        _isEditing = true;
+        _isAdding = false;
+        _nav.NavigateTo($"/clasificaciones/editar/{c.Id}", forceLoad: false);
+    }
+
+    private async Task Save()
+    {
+        if (_isEditing) await _repositorioClas.Update(_editing.Id, _editing);
+        else await _repositorioClas.Add(_editing);
+
+        _isAdding = _isEditing = false;
+        _editing = new Clasificacion();
+        await Load();
+        // volver a la ruta principal de clasificaciones
+        _nav.NavigateTo("/clasificaciones");
+    }
+
+    private void Cancel()
+    {
+        _isAdding = _isEditing = false;
+        _editing = new Clasificacion();
+        _nav.NavigateTo("/clasificaciones");
+    }
+
+    private async Task Delete(int id)
+    {
+        await _repositorioClas.Delete(id);
+        await Load();
+    }
+}
+||

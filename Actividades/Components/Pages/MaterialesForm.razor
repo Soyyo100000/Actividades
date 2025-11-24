@@ -1,0 +1,117 @@
+﻿@page "/materiales"
+@page "/materiales/editar/{Id:int}"
+@rendermode InteractiveServer
+@inject IRepositorioMateriales _repositoriomaterial;
+@inject NavigationManager _nav
+
+<h3>Materiales</h3>
+
+<div class="mb-3">
+    <button class="btn btn-sm btn-outline-success" @onclick="StartAdd">Añadir Material</button>
+    <button class="btn btn-sm btn-secondary ms-2" @onclick='() => _nav.NavigateTo("/personas")'>Volver a Personas</button>
+</div>
+
+<div class="row">
+    <div class="col-6">
+        <ul class="list-group">
+            @foreach (var m in _materiales)
+            {
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    @m.Nombre
+                    <div>
+                        <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => Edit(m)">Editar</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => Delete(m.Id)">Eliminar</button>
+                    </div>
+                </li>
+            }
+        </ul>
+    </div>
+
+    <div class="col-6">
+        @if (_isAdding || _isEditing)
+        {
+            <div class="card">
+                <div class="card-body">
+                    <h6>@(_isEditing ? "Editar Material" : "Nuevo Material")</h6>
+                    <EditForm Model="_editing" OnValidSubmit="Save">
+                        <DataAnnotationsValidator />
+                        <InputText class="form-control mb-2" @bind-Value="_editing.Nombre" />
+                        <div>
+                            <button type="submit" class="btn btn-sm btn-success">Guardar</button>
+                            <button type="button" class="btn btn-sm btn-secondary ms-2" @onclick="Cancel">Cancelar</button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; } = 0;
+
+    private List<Materiale> _materiales = new();
+    private Materiale _editing = new();
+    private bool _isAdding = false;
+    private bool _isEditing = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+
+        // Si se abre la ruta /materiales/editar/{Id} inicializar edición
+        if (Id > 0)
+        {
+            var mat = await _repositoriomaterial.Get(Id);
+            if (mat != null)
+            {
+                _editing = new Materiale { Id = mat.Id, Nombre = mat.Nombre };
+                _isEditing = true;
+                _isAdding = false;
+            }
+        }
+    }
+
+    private async Task Load() => _materiales = await _repositoriomaterial.GetAll();
+
+    private void StartAdd()
+    {
+        _editing = new Materiale();
+        _isAdding = true;
+        _isEditing = false;
+        // navegar para mostrar URL limpia si se desea: _nav.NavigateTo("/materiales");
+    }
+
+    private void Edit(Materiale m)
+    {
+        _editing = new Materiale { Id = m.Id, Nombre = m.Nombre };
+        _isEditing = true;
+        _isAdding = false;
+        // cambiar URL para reflejar edición:
+        _nav.NavigateTo($"/materiales/editar/{m.Id}", forceLoad: false);
+    }
+
+    private async Task Save()
+    {
+        if (_isEditing) await _repositoriomaterial.Update(_editing.Id, _editing);
+        else await _repositoriomaterial.Add(_editing);
+
+        _isAdding = _isEditing = false;
+        _editing = new Materiale();
+        await Load();
+    }
+
+    private void Cancel()
+    {
+        _isAdding = _isEditing = false;
+        _editing = new Materiale();
+        // volver a la lista sin id en URL:
+        _nav.NavigateTo("/materiales");
+    }
+
+    private async Task Delete(int id)
+    {
+        await _repositoriomaterial.Delete(id);
+        await Load();
+    }
+}
